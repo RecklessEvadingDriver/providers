@@ -1,31 +1,60 @@
-// App State
-let providers = [];
-let filteredProviders = [];
-let currentFilter = 'all';
-let searchQuery = '';
+// ===== Configuration =====
+const API_BASE = window.location.origin + '/api';
 
-// DOM Elements
-const providersGrid = document.getElementById('providersGrid');
-const searchInput = document.getElementById('searchInput');
-const filterButtons = document.querySelectorAll('.filter-btn');
-const themeToggle = document.getElementById('themeToggle');
-const modal = document.getElementById('providerModal');
-const modalBody = document.getElementById('modalBody');
-const modalClose = document.getElementById('modalClose');
-const modalOverlay = document.getElementById('modalOverlay');
-const totalProvidersEl = document.getElementById('totalProviders');
+// ===== State Management =====
+const state = {
+    providers: [],
+    currentProvider: null,
+    currentContent: null,
+    currentStreams: [],
+    currentView: 'home',
+    searchQuery: '',
+    filterType: 'all'
+};
 
-// Initialize
+// ===== DOM Elements =====
+const elements = {
+    // Views
+    homeView: document.getElementById('homeView'),
+    browseView: document.getElementById('browseView'),
+    detailsView: document.getElementById('detailsView'),
+    playerView: document.getElementById('playerView'),
+    
+    // Navigation
+    themeToggle: document.getElementById('themeToggle'),
+    btnBack: document.getElementById('btnBack'),
+    logoHome: document.getElementById('logoHome'),
+    
+    // Home view
+    providersGrid: document.getElementById('providersGrid'),
+    providerSearch: document.getElementById('providerSearch'),
+    totalProviders: document.getElementById('totalProviders'),
+    activeProviders: document.getElementById('activeProviders'),
+    
+    // Browse view
+    currentProviderName: document.getElementById('currentProviderName'),
+    currentProviderType: document.getElementById('currentProviderType'),
+    contentSearch: document.getElementById('contentSearch'),
+    categoriesContainer: document.getElementById('categoriesContainer'),
+    contentGrid: document.getElementById('contentGrid'),
+    
+    // Details view
+    detailsContent: document.getElementById('detailsContent'),
+    
+    // Player view
+    playerContainer: document.getElementById('playerContainer')
+};
+
+// ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
-    loadProviders();
     setupEventListeners();
-    setupSmoothScroll();
+    loadProviders();
 });
 
-// Theme Management
+// ===== Theme Management =====
 function initTheme() {
-    const savedTheme = localStorage.getItem('theme') || 'light';
+    const savedTheme = localStorage.getItem('theme') || 'dark';
     document.documentElement.setAttribute('data-theme', savedTheme);
 }
 
@@ -36,44 +65,236 @@ function toggleTheme() {
     localStorage.setItem('theme', newTheme);
 }
 
-// Load Providers
+// ===== Event Listeners =====
+function setupEventListeners() {
+    // Theme toggle
+    elements.themeToggle.addEventListener('click', toggleTheme);
+    
+    // Navigation
+    elements.btnBack.addEventListener('click', goBack);
+    elements.logoHome.addEventListener('click', () => showView('home'));
+    
+    // Provider search and filter
+    elements.providerSearch.addEventListener('input', debounce((e) => {
+        state.searchQuery = e.target.value.toLowerCase();
+        renderProviders();
+    }, 300));
+    
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            state.filterType = btn.getAttribute('data-filter');
+            renderProviders();
+        });
+    });
+    
+    // Content search
+    elements.contentSearch.addEventListener('input', debounce((e) => {
+        searchContent(e.target.value);
+    }, 500));
+}
+
+// ===== API Functions =====
+async function apiRequest(endpoint, options = {}) {
+    try {
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            },
+            ...options
+        });
+        
+        if (!response.ok) {
+            throw new Error(`API error: ${response.statusText}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('API request failed:', error);
+        throw error;
+    }
+}
+
 async function loadProviders() {
     try {
-        const response = await fetch('../manifest.json');
-        if (!response.ok) throw new Error('Failed to load providers');
+        state.providers = await apiRequest('/providers');
+        const activeCount = state.providers.filter(p => !p.disabled).length;
         
-        providers = await response.json();
-        filteredProviders = providers;
-        
-        // Update stats
-        if (totalProvidersEl) {
-            totalProvidersEl.textContent = providers.length;
+        if (elements.totalProviders) {
+            elements.totalProviders.textContent = state.providers.length;
+        }
+        if (elements.activeProviders) {
+            elements.activeProviders.textContent = activeCount;
         }
         
         renderProviders();
     } catch (error) {
-        console.error('Error loading providers:', error);
-        providersGrid.innerHTML = `
-            <div class="loading">
-                <p>Error loading providers. Please try again later.</p>
-                <p style="font-size: 0.875rem; margin-top: 0.5rem;">Make sure the manifest.json file exists.</p>
+        elements.providersGrid.innerHTML = `
+            <div class="error-message">
+                <p>Error loading providers. Please refresh the page.</p>
+                <p style="font-size: 0.875rem; margin-top: 0.5rem;">${error.message}</p>
             </div>
         `;
     }
 }
 
-// Render Providers
+async function loadProviderCatalog(providerValue) {
+    try {
+        const data = await apiRequest(`/provider/${providerValue}/catalog`);
+        return data;
+    } catch (error) {
+        console.error('Error loading catalog:', error);
+        return { catalog: [], genres: [] };
+    }
+}
+
+async function loadPosts(providerValue, filter, page = 1) {
+    try {
+        const posts = await apiRequest(`/provider/${providerValue}/posts`, {
+            method: 'POST',
+            body: JSON.stringify({ filter, page })
+        });
+        return posts;
+    } catch (error) {
+        console.error('Error loading posts:', error);
+        return [];
+    }
+}
+
+async function searchContent(query) {
+    if (!query || query.trim().length < 2) {
+        // Reload default content
+        if (state.currentProvider) {
+            loadBrowseView(state.currentProvider);
+        }
+        return;
+    }
+    
+    try {
+        elements.contentGrid.innerHTML = '<div class="loading">Searching...</div>';
+        
+        const results = await apiRequest(`/provider/${state.currentProvider.value}/search`, {
+            method: 'POST',
+            body: JSON.stringify({ query: query.trim(), page: 1 })
+        });
+        
+        renderContentGrid(results);
+    } catch (error) {
+        elements.contentGrid.innerHTML = `
+            <div class="error-message">
+                <p>Search failed. Please try again.</p>
+            </div>
+        `;
+    }
+}
+
+async function loadMetadata(providerValue, link) {
+    try {
+        const meta = await apiRequest(`/provider/${providerValue}/meta`, {
+            method: 'POST',
+            body: JSON.stringify({ link })
+        });
+        return meta;
+    } catch (error) {
+        console.error('Error loading metadata:', error);
+        throw error;
+    }
+}
+
+async function loadStream(providerValue, link, type) {
+    try {
+        const streams = await apiRequest(`/provider/${providerValue}/stream`, {
+            method: 'POST',
+            body: JSON.stringify({ link, type })
+        });
+        return streams;
+    } catch (error) {
+        console.error('Error loading stream:', error);
+        throw error;
+    }
+}
+
+async function loadEpisodes(providerValue, url) {
+    try {
+        const episodes = await apiRequest(`/provider/${providerValue}/episodes`, {
+            method: 'POST',
+            body: JSON.stringify({ url })
+        });
+        return episodes;
+    } catch (error) {
+        console.error('Error loading episodes:', error);
+        return [];
+    }
+}
+
+// ===== View Management =====
+function showView(viewName) {
+    // Hide all views
+    elements.homeView.style.display = 'none';
+    elements.browseView.style.display = 'none';
+    elements.detailsView.style.display = 'none';
+    elements.playerView.style.display = 'none';
+    
+    // Show selected view
+    switch(viewName) {
+        case 'home':
+            elements.homeView.style.display = 'block';
+            elements.btnBack.style.display = 'none';
+            break;
+        case 'browse':
+            elements.browseView.style.display = 'block';
+            elements.btnBack.style.display = 'flex';
+            break;
+        case 'details':
+            elements.detailsView.style.display = 'block';
+            elements.btnBack.style.display = 'flex';
+            break;
+        case 'player':
+            elements.playerView.style.display = 'block';
+            elements.btnBack.style.display = 'flex';
+            break;
+    }
+    
+    state.currentView = viewName;
+    document.body.setAttribute('data-view', viewName);
+}
+
+function goBack() {
+    if (state.currentView === 'player') {
+        showView('details');
+        if (state.currentContent) {
+            loadDetailsView(state.currentProvider.value, state.currentContent.link);
+        }
+    } else if (state.currentView === 'details') {
+        showView('browse');
+    } else if (state.currentView === 'browse') {
+        showView('home');
+        state.currentProvider = null;
+    }
+}
+
+// ===== Render Functions =====
 function renderProviders() {
-    if (filteredProviders.length === 0) {
-        providersGrid.innerHTML = `
-            <div class="loading">
+    const filtered = state.providers.filter(provider => {
+        const matchesFilter = state.filterType === 'all' || provider.type === state.filterType;
+        const matchesSearch = !state.searchQuery || 
+            provider.display_name.toLowerCase().includes(state.searchQuery) ||
+            provider.value.toLowerCase().includes(state.searchQuery);
+        return matchesFilter && matchesSearch;
+    });
+    
+    if (filtered.length === 0) {
+        elements.providersGrid.innerHTML = `
+            <div class="empty-state">
                 <p>No providers found matching your criteria.</p>
             </div>
         `;
         return;
     }
     
-    providersGrid.innerHTML = filteredProviders.map(provider => {
+    elements.providersGrid.innerHTML = filtered.map(provider => {
         const initials = provider.display_name
             .split(' ')
             .map(word => word[0])
@@ -86,7 +307,7 @@ function renderProviders() {
         const statusText = provider.disabled ? 'Disabled' : 'Active';
         
         return `
-            <div class="provider-card" data-provider="${provider.value}">
+            <div class="provider-card" data-provider='${JSON.stringify(provider)}' ${provider.disabled ? 'style="opacity: 0.6; cursor: not-allowed;"' : ''}>
                 <div class="provider-icon">${initials}</div>
                 <div class="provider-info">
                     <div class="provider-header">
@@ -107,207 +328,363 @@ function renderProviders() {
     
     // Add click handlers
     document.querySelectorAll('.provider-card').forEach(card => {
-        card.addEventListener('click', () => {
-            const providerValue = card.getAttribute('data-provider');
-            showProviderDetails(providerValue);
-        });
-    });
-}
-
-// Filter Providers
-function filterProviders() {
-    filteredProviders = providers.filter(provider => {
-        const matchesFilter = currentFilter === 'all' || provider.type === currentFilter;
-        const matchesSearch = provider.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            provider.value.toLowerCase().includes(searchQuery.toLowerCase());
-        return matchesFilter && matchesSearch;
-    });
-    
-    renderProviders();
-}
-
-// Show Provider Details
-function showProviderDetails(providerValue) {
-    const provider = providers.find(p => p.value === providerValue);
-    if (!provider) return;
-    
-    const typeClass = `badge-${provider.type || 'global'}`;
-    const statusClass = provider.disabled ? 'status-disabled' : 'status-active';
-    const statusText = provider.disabled ? 'Disabled' : 'Active';
-    
-    modalBody.innerHTML = `
-        <div style="padding-right: 2rem;">
-            <h2 style="font-size: 1.75rem; margin-bottom: 1rem;">${provider.display_name}</h2>
-            
-            <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
-                <span class="provider-badge ${typeClass}">${provider.type || 'global'}</span>
-                <div class="status-indicator" style="padding: 0.25rem 0.5rem; background: var(--bg-secondary); border-radius: var(--radius-sm);">
-                    <span class="status-dot ${statusClass}"></span>
-                    <span style="font-size: 0.875rem;">${statusText}</span>
-                </div>
-            </div>
-            
-            <div style="background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 1rem; margin-bottom: 1.5rem;">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div>
-                        <div style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.25rem;">Provider ID</div>
-                        <div style="font-weight: 600; font-family: monospace;">${provider.value}</div>
-                    </div>
-                    <div>
-                        <div style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.25rem;">Version</div>
-                        <div style="font-weight: 600;">${provider.version}</div>
-                    </div>
-                    <div>
-                        <div style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.25rem;">Region</div>
-                        <div style="font-weight: 600; text-transform: capitalize;">${provider.type || 'global'}</div>
-                    </div>
-                    <div>
-                        <div style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.25rem;">Status</div>
-                        <div style="font-weight: 600;">${statusText}</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div style="margin-bottom: 1.5rem;">
-                <h3 style="font-size: 1.125rem; margin-bottom: 0.5rem;">About</h3>
-                <p style="color: var(--text-secondary); line-height: 1.6;">
-                    ${provider.display_name} is a ${provider.type || 'global'} provider offering streaming content.
-                    This provider is currently ${provider.disabled ? 'disabled and not available for use' : 'active and ready to use'}.
-                </p>
-            </div>
-            
-            <div style="margin-bottom: 1.5rem;">
-                <h3 style="font-size: 1.125rem; margin-bottom: 0.5rem;">Usage</h3>
-                <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 0.75rem;">
-                    To use this provider in your Vega app:
-                </p>
-                <ol style="color: var(--text-secondary); line-height: 1.8; padding-left: 1.5rem;">
-                    <li>Open the Vega app settings</li>
-                    <li>Navigate to the providers section</li>
-                    <li>Select "${provider.display_name}"</li>
-                    <li>Start streaming your favorite content</li>
-                </ol>
-            </div>
-            
-            ${!provider.disabled ? `
-                <div style="background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); color: white; border-radius: var(--radius-lg); padding: 1rem;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-                        </svg>
-                        <strong>Provider Active</strong>
-                    </div>
-                    <p style="font-size: 0.875rem; opacity: 0.95;">
-                        This provider is currently active and available for use in the Vega app.
-                    </p>
-                </div>
-            ` : `
-                <div style="background: linear-gradient(135deg, var(--error) 0%, #dc2626 100%); color: white; border-radius: var(--radius-lg); padding: 1rem;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
-                        </svg>
-                        <strong>Provider Disabled</strong>
-                    </div>
-                    <p style="font-size: 0.875rem; opacity: 0.95;">
-                        This provider is currently disabled and not available for use.
-                    </p>
-                </div>
-            `}
-        </div>
-    `;
-    
-    modal.classList.add('active');
-    document.body.style.overflow = 'hidden';
-}
-
-// Close Modal
-function closeModal() {
-    modal.classList.remove('active');
-    document.body.style.overflow = '';
-}
-
-// Setup Event Listeners
-function setupEventListeners() {
-    // Theme toggle
-    themeToggle.addEventListener('click', toggleTheme);
-    
-    // Search
-    searchInput.addEventListener('input', (e) => {
-        searchQuery = e.target.value;
-        filterProviders();
-    });
-    
-    // Filters
-    filterButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            filterButtons.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            currentFilter = btn.getAttribute('data-filter');
-            filterProviders();
-        });
-    });
-    
-    // Modal
-    modalClose.addEventListener('click', closeModal);
-    modalOverlay.addEventListener('click', closeModal);
-    
-    // Close modal on Escape key
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && modal.classList.contains('active')) {
-            closeModal();
-        }
-    });
-}
-
-// Smooth Scroll
-function setupSmoothScroll() {
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function (e) {
-            e.preventDefault();
-            const target = document.querySelector(this.getAttribute('href'));
-            if (target) {
-                const offsetTop = target.offsetTop - 64; // Account for navbar height
-                window.scrollTo({
-                    top: offsetTop,
-                    behavior: 'smooth'
-                });
-                
-                // Update active nav link
-                document.querySelectorAll('.nav-link').forEach(link => {
-                    link.classList.remove('active');
-                });
-                this.classList.add('active');
-            }
-        });
-    });
-}
-
-// Update active nav link on scroll
-let lastScrollTop = 0;
-window.addEventListener('scroll', () => {
-    const sections = document.querySelectorAll('section[id]');
-    const scrollPosition = window.scrollY + 100;
-    
-    sections.forEach(section => {
-        const sectionTop = section.offsetTop;
-        const sectionHeight = section.offsetHeight;
-        const sectionId = section.getAttribute('id');
-        
-        if (scrollPosition >= sectionTop && scrollPosition < sectionTop + sectionHeight) {
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.classList.remove('active');
-                if (link.getAttribute('href') === `#${sectionId}`) {
-                    link.classList.add('active');
-                }
+        const providerData = JSON.parse(card.getAttribute('data-provider'));
+        if (!providerData.disabled) {
+            card.addEventListener('click', () => {
+                selectProvider(providerData);
             });
         }
     });
+}
+
+function renderContentGrid(posts) {
+    if (!posts || posts.length === 0) {
+        elements.contentGrid.innerHTML = `
+            <div class="empty-state">
+                <p>No content found.</p>
+            </div>
+        `;
+        return;
+    }
     
-    lastScrollTop = window.scrollY;
+    elements.contentGrid.innerHTML = posts.map(post => `
+        <div class="content-card" data-link="${post.link}">
+            <img src="${post.image}" alt="${post.title}" class="content-poster" loading="lazy" 
+                 onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22300%22%3E%3Crect fill=%22%23ddd%22 width=%22200%22 height=%22300%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 fill=%22%23999%22 text-anchor=%22middle%22 dy=%22.3em%22%3ENo Image%3C/text%3E%3C/svg%3E'">
+            <div class="content-info">
+                <div class="content-title">${post.title}</div>
+            </div>
+        </div>
+    `).join('');
+    
+    // Add click handlers
+    document.querySelectorAll('.content-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const link = card.getAttribute('data-link');
+            loadDetailsView(state.currentProvider.value, link);
+        });
+    });
+}
+
+// ===== Provider Selection =====
+async function selectProvider(provider) {
+    state.currentProvider = provider;
+    await loadBrowseView(provider);
+}
+
+async function loadBrowseView(provider) {
+    showView('browse');
+    
+    elements.currentProviderName.textContent = provider.display_name;
+    elements.currentProviderType.textContent = provider.type || 'global';
+    elements.currentProviderType.className = `provider-badge badge-${provider.type || 'global'}`;
+    elements.contentSearch.value = '';
+    
+    elements.categoriesContainer.innerHTML = '<div class="loading">Loading categories...</div>';
+    elements.contentGrid.innerHTML = '<div class="loading">Loading content...</div>';
+    
+    try {
+        const { catalog, genres } = await loadProviderCatalog(provider.value);
+        
+        // Render first category
+        if (catalog && catalog.length > 0) {
+            const firstCategory = catalog[0];
+            const posts = await loadPosts(provider.value, firstCategory.filter, 1);
+            renderContentGrid(posts);
+            
+            // Render category buttons
+            if (catalog.length > 1 || genres.length > 0) {
+                elements.categoriesContainer.innerHTML = `
+                    <div style="margin-bottom: 1.5rem;">
+                        <h3 style="font-size: 1.25rem; margin-bottom: 1rem;">Categories</h3>
+                        <div class="filters">
+                            ${catalog.map((cat, index) => `
+                                <button class="filter-btn ${index === 0 ? 'active' : ''}" data-filter="${cat.filter}">
+                                    ${cat.title}
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ${genres.length > 0 ? `
+                        <div>
+                            <h3 style="font-size: 1.25rem; margin-bottom: 1rem;">Genres</h3>
+                            <div class="filters">
+                                ${genres.map(genre => `
+                                    <button class="filter-btn" data-filter="${genre.filter}">
+                                        ${genre.title}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                `;
+                
+                // Add category click handlers
+                elements.categoriesContainer.querySelectorAll('.filter-btn').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        elements.categoriesContainer.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        
+                        elements.contentGrid.innerHTML = '<div class="loading">Loading...</div>';
+                        const filter = btn.getAttribute('data-filter');
+                        const posts = await loadPosts(provider.value, filter, 1);
+                        renderContentGrid(posts);
+                    });
+                });
+            } else {
+                elements.categoriesContainer.innerHTML = '';
+            }
+        } else {
+            elements.categoriesContainer.innerHTML = '';
+            elements.contentGrid.innerHTML = `
+                <div class="empty-state">
+                    <p>No categories available for this provider.</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        elements.contentGrid.innerHTML = `
+            <div class="error-message">
+                <p>Error loading content. Please try again.</p>
+            </div>
+        `;
+    }
+}
+
+// ===== Details View =====
+async function loadDetailsView(providerValue, link) {
+    showView('details');
+    
+    elements.detailsContent.innerHTML = '<div class="loading" style="text-align: center; padding: 3rem;">Loading details...</div>';
+    
+    try {
+        const meta = await loadMetadata(providerValue, link);
+        state.currentContent = { link, ...meta };
+        
+        elements.detailsContent.innerHTML = `
+            <div class="details-hero">
+                <div class="details-content-wrapper">
+                    <div class="details-poster-wrapper">
+                        <img src="${meta.image}" alt="${meta.title}" class="details-poster"
+                             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22300%22 height=%22450%22%3E%3Crect fill=%22%23ddd%22 width=%22300%22 height=%22450%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 fill=%22%23999%22 text-anchor=%22middle%22 dy=%22.3em%22%3ENo Image%3C/text%3E%3C/svg%3E'">
+                    </div>
+                    <div class="details-info">
+                        <h1>${meta.title}</h1>
+                        <div class="details-meta">
+                            ${meta.rating ? `<span>⭐ ${meta.rating}</span>` : ''}
+                            <span>${meta.type === 'movie' ? 'Movie' : 'TV Series'}</span>
+                            ${meta.imdbId ? `<span>IMDb: ${meta.imdbId}</span>` : ''}
+                        </div>
+                        ${meta.synopsis ? `<p class="details-synopsis">${meta.synopsis}</p>` : ''}
+                        ${meta.tags && meta.tags.length > 0 ? `
+                            <div class="details-tags">
+                                ${meta.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+                            </div>
+                        ` : ''}
+                        ${meta.cast && meta.cast.length > 0 ? `
+                            <div style="margin-bottom: 1rem;">
+                                <strong>Cast:</strong> ${meta.cast.join(', ')}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+            
+            ${renderLinkList(meta.linkList)}
+        `;
+    } catch (error) {
+        elements.detailsContent.innerHTML = `
+            <div class="error-message">
+                <p>Error loading details. Please try again.</p>
+                <p style="font-size: 0.875rem; margin-top: 0.5rem;">${error.message}</p>
+            </div>
+        `;
+    }
+}
+
+function renderLinkList(linkList) {
+    if (!linkList || linkList.length === 0) {
+        return '';
+    }
+    
+    return `
+        <div class="seasons-grid">
+            ${linkList.map((link, index) => `
+                <div class="season-card" id="season-${index}">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3>${link.title}</h3>
+                        ${link.quality ? `<span class="quality-badge">${link.quality}p</span>` : ''}
+                    </div>
+                    ${link.directLinks && link.directLinks.length > 0 ? `
+                        <div class="episodes-list">
+                            ${link.directLinks.map(ep => `
+                                <div class="episode-item" data-link="${ep.link}" data-type="${ep.type || 'movie'}">
+                                    <span>${ep.title}</span>
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                        <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                                    </svg>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : link.episodesLink ? `
+                        <button class="btn btn-primary" style="margin-top: 1rem; width: 100%;" data-episodes-link="${link.episodesLink}">
+                            Load Episodes
+                        </button>
+                    ` : ''}
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Add event delegation for episode clicks
+document.addEventListener('click', async (e) => {
+    const episodeItem = e.target.closest('.episode-item');
+    if (episodeItem) {
+        const link = episodeItem.getAttribute('data-link');
+        const type = episodeItem.getAttribute('data-type');
+        loadPlayerView(link, type);
+        return;
+    }
+    
+    const episodesBtn = e.target.closest('[data-episodes-link]');
+    if (episodesBtn) {
+        const url = episodesBtn.getAttribute('data-episodes-link');
+        episodesBtn.innerHTML = 'Loading...';
+        episodesBtn.disabled = true;
+        
+        try {
+            const episodes = await loadEpisodes(state.currentProvider.value, url);
+            const seasonCard = episodesBtn.closest('.season-card');
+            
+            if (episodes && episodes.length > 0) {
+                episodesBtn.remove();
+                const episodesList = document.createElement('div');
+                episodesList.className = 'episodes-list';
+                episodesList.innerHTML = episodes.map(ep => `
+                    <div class="episode-item" data-link="${ep.link}" data-type="series">
+                        <span>${ep.title}</span>
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                        </svg>
+                    </div>
+                `).join('');
+                seasonCard.appendChild(episodesList);
+            }
+        } catch (error) {
+            episodesBtn.innerHTML = 'Error loading episodes';
+        }
+    }
 });
 
-// Performance optimization: Debounce search
+// ===== Player View =====
+async function loadPlayerView(link, type) {
+    showView('player');
+    
+    elements.playerContainer.innerHTML = '<div class="loading" style="text-align: center; padding: 3rem;">Loading streams...</div>';
+    
+    try {
+        const streams = await loadStream(state.currentProvider.value, link, type);
+        state.currentStreams = streams;
+        
+        if (!streams || streams.length === 0) {
+            elements.playerContainer.innerHTML = `
+                <div class="error-message">
+                    <p>No streams available for this content.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        renderPlayer(streams);
+    } catch (error) {
+        elements.playerContainer.innerHTML = `
+            <div class="error-message">
+                <p>Error loading streams. Please try again.</p>
+                <p style="font-size: 0.875rem; margin-top: 0.5rem;">${error.message}</p>
+            </div>
+        `;
+    }
+}
+
+function renderPlayer(streams) {
+    const firstStream = streams[0];
+    
+    elements.playerContainer.innerHTML = `
+        <div class="player-wrapper">
+            ${renderVideoPlayer(firstStream)}
+            
+            <div class="player-controls">
+                <div class="server-selection">
+                    <h3 style="margin-bottom: 0.5rem;">Available Servers</h3>
+                    <div class="server-buttons">
+                        ${streams.map((stream, index) => `
+                            <button class="server-btn ${index === 0 ? 'active' : ''}" data-stream-index="${index}">
+                                ${stream.server}${stream.quality ? ` (${stream.quality}p)` : ''}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Add server switch handlers
+    document.querySelectorAll('.server-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const index = parseInt(btn.getAttribute('data-stream-index'));
+            switchStream(streams[index]);
+            
+            document.querySelectorAll('.server-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+    });
+}
+
+function renderVideoPlayer(stream) {
+    if (stream.type === 'm3u8' || stream.type === 'application/x-mpegURL') {
+        return `
+            <video class="video-player" controls autoplay>
+                <source src="${stream.link}" type="application/x-mpegURL">
+                Your browser does not support HLS playback. Please try a different server.
+            </video>
+            <p style="color: #888; text-align: center; margin-top: 1rem; font-size: 0.875rem;">
+                ${stream.server} - ${stream.quality ? stream.quality + 'p' : 'Auto Quality'}
+            </p>
+        `;
+    } else if (stream.type === 'mp4') {
+        return `
+            <video class="video-player" controls autoplay>
+                <source src="${stream.link}" type="video/mp4">
+                Your browser does not support video playback.
+            </video>
+            <p style="color: #888; text-align: center; margin-top: 1rem; font-size: 0.875rem;">
+                ${stream.server} - ${stream.quality ? stream.quality + 'p' : 'Auto Quality'}
+            </p>
+        `;
+    } else {
+        return `
+            <iframe 
+                class="video-player" 
+                src="${stream.link}" 
+                frameborder="0" 
+                allowfullscreen
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            ></iframe>
+            <p style="color: #888; text-align: center; margin-top: 1rem; font-size: 0.875rem;">
+                ${stream.server} - ${stream.quality ? stream.quality + 'p' : 'Auto Quality'}
+            </p>
+        `;
+    }
+}
+
+function switchStream(stream) {
+    const playerWrapper = document.querySelector('.player-wrapper');
+    const videoContainer = playerWrapper.querySelector('video, iframe').parentElement;
+    videoContainer.innerHTML = renderVideoPlayer(stream);
+}
+
+// ===== Utility Functions =====
 function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -319,13 +696,3 @@ function debounce(func, wait) {
         timeout = setTimeout(later, wait);
     };
 }
-
-// Apply debounce to search
-const debouncedSearch = debounce((value) => {
-    searchQuery = value;
-    filterProviders();
-}, 300);
-
-searchInput.addEventListener('input', (e) => {
-    debouncedSearch(e.target.value);
-});

@@ -3,21 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-    <meta name="description" content="Vega Providers - Fast and reliable streaming providers for the Vega app. Browse 40+ providers across global, India, English, and Italy regions.">
-    <meta name="keywords" content="vega, providers, streaming, movies, tv shows, anime">
+    <meta name="description" content="Vega Stream - Watch movies and TV shows from 40+ providers. Fast, free, and cross-platform streaming.">
+    <meta name="keywords" content="vega, streaming, movies, tv shows, anime, watch online, free streaming">
     <meta name="theme-color" content="#6366f1">
-    <title>Vega Providers - Fast & Cross-Platform</title>
+    <title>Vega Stream - Watch Free Movies & TV Shows</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
-<body>
+<body data-view="home">
     <!-- Navigation -->
     <nav class="navbar">
         <div class="container">
             <div class="nav-content">
-                <div class="logo">
+                <div class="logo" id="logoHome">
                     <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <rect width="32" height="32" rx="8" fill="url(#gradient)"/>
                         <path d="M16 8L20 16L16 24L12 16L16 8Z" fill="white"/>
@@ -28,13 +28,15 @@
                             </linearGradient>
                         </defs>
                     </svg>
-                    <span class="logo-text">Vega Providers</span>
+                    <span class="logo-text">Vega Stream</span>
                 </div>
                 <div class="nav-links">
-                    <a href="#home" class="nav-link active">Home</a>
-                    <a href="#providers" class="nav-link">Providers</a>
-                    <a href="#docs" class="nav-link">Docs</a>
-                    <a href="#about" class="nav-link">About</a>
+                    <button class="btn-back" id="btnBack" style="display: none;">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                        </svg>
+                        Back
+                    </button>
                     <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
                         <svg class="sun-icon" width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/>
@@ -48,184 +50,114 @@
         </div>
     </nav>
 
-    <!-- Hero Section -->
-    <section id="home" class="hero">
-        <div class="container">
-            <div class="hero-content">
-                <h1 class="hero-title">Fast & Reliable Streaming Providers</h1>
-                <p class="hero-description">
-                    Access 40+ high-quality streaming providers for the Vega app. 
-                    Cross-platform, optimized, and ready to use.
-                </p>
-                <div class="hero-buttons">
-                    <a href="#providers" class="btn btn-primary">Browse Providers</a>
-                    <a href="#docs" class="btn btn-secondary">Documentation</a>
-                </div>
-                <div class="hero-stats">
-                    <div class="stat">
-                        <div class="stat-value" id="totalProviders">40+</div>
-                        <div class="stat-label">Providers</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-value">4</div>
-                        <div class="stat-label">Regions</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-value">99.9%</div>
-                        <div class="stat-label">Uptime</div>
+    <!-- Home View -->
+    <div id="homeView" class="view-container">
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="container">
+                <div class="hero-content">
+                    <h1 class="hero-title">Stream Movies & TV Shows</h1>
+                    <p class="hero-description">
+                        Choose from 40+ streaming providers. Fast, free, and works on all devices.
+                    </p>
+                    <div class="hero-stats">
+                        <div class="stat">
+                            <div class="stat-value" id="totalProviders">0</div>
+                            <div class="stat-label">Providers</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value" id="activeProviders">0</div>
+                            <div class="stat-label">Active</div>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- Providers Section -->
-    <section id="providers" class="providers-section">
-        <div class="container">
-            <div class="section-header">
-                <h2 class="section-title">Available Providers</h2>
-                <p class="section-description">Browse through our extensive collection of streaming providers</p>
+        <!-- Provider Selection -->
+        <section class="providers-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Choose Your Provider</h2>
+                    <p class="section-description">Select a provider to start browsing content</p>
+                </div>
+
+                <!-- Search and Filters -->
+                <div class="controls">
+                    <div class="search-box">
+                        <svg class="search-icon" width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+                        </svg>
+                        <input type="text" id="providerSearch" class="search-input" placeholder="Search providers...">
+                    </div>
+                    <div class="filters">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="global">Global</button>
+                        <button class="filter-btn" data-filter="india">India</button>
+                        <button class="filter-btn" data-filter="english">English</button>
+                        <button class="filter-btn" data-filter="italy">Italy</button>
+                    </div>
+                </div>
+
+                <!-- Provider Cards -->
+                <div class="providers-grid" id="providersGrid">
+                    <div class="loading">Loading providers...</div>
+                </div>
             </div>
+        </section>
+    </div>
 
-            <!-- Search and Filters -->
-            <div class="controls">
-                <div class="search-box">
+    <!-- Browse View -->
+    <div id="browseView" class="view-container" style="display: none;">
+        <section class="browse-section">
+            <div class="container">
+                <!-- Provider Header -->
+                <div class="provider-header-bar">
+                    <div class="provider-info-header">
+                        <h1 id="currentProviderName">Provider Name</h1>
+                        <span class="provider-badge" id="currentProviderType">global</span>
+                    </div>
+                </div>
+
+                <!-- Search Box -->
+                <div class="search-box" style="margin-bottom: 2rem;">
                     <svg class="search-icon" width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                         <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
                     </svg>
-                    <input type="text" id="searchInput" class="search-input" placeholder="Search providers...">
+                    <input type="text" id="contentSearch" class="search-input" placeholder="Search movies and shows...">
                 </div>
-                <div class="filters">
-                    <button class="filter-btn active" data-filter="all">All</button>
-                    <button class="filter-btn" data-filter="global">Global</button>
-                    <button class="filter-btn" data-filter="india">India</button>
-                    <button class="filter-btn" data-filter="english">English</button>
-                    <button class="filter-btn" data-filter="italy">Italy</button>
+
+                <!-- Categories -->
+                <div id="categoriesContainer"></div>
+
+                <!-- Content Grid -->
+                <div id="contentGrid" class="content-grid">
+                    <div class="loading">Loading content...</div>
                 </div>
             </div>
+        </section>
+    </div>
 
-            <!-- Provider Cards -->
-            <div class="providers-grid" id="providersGrid">
-                <div class="loading">Loading providers...</div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Documentation Section -->
-    <section id="docs" class="docs-section">
-        <div class="container">
-            <div class="section-header">
-                <h2 class="section-title">Documentation</h2>
-                <p class="section-description">Learn how to use and integrate Vega providers</p>
-            </div>
-
-            <div class="docs-grid">
-                <div class="doc-card">
-                    <div class="doc-icon">🚀</div>
-                    <h3>Quick Start</h3>
-                    <p>Get up and running with Vega providers in minutes. Learn the basics and start streaming.</p>
-                    <a href="https://github.com/RecklessEvadingDriver/providers#readme" target="_blank" class="doc-link">Read More →</a>
-                </div>
-
-                <div class="doc-card">
-                    <div class="doc-icon">🔧</div>
-                    <h3>Configuration</h3>
-                    <p>Configure your Vega app to use providers. Set up test mode and customize settings.</p>
-                    <a href="https://github.com/RecklessEvadingDriver/providers#how-to-test-your-provider" target="_blank" class="doc-link">Read More →</a>
-                </div>
-
-                <div class="doc-card">
-                    <div class="doc-icon">📝</div>
-                    <h3>Create Provider</h3>
-                    <p>Build your own custom provider with our comprehensive guide and examples.</p>
-                    <a href="https://github.com/RecklessEvadingDriver/providers#provider-folder-structure" target="_blank" class="doc-link">Read More →</a>
-                </div>
-
-                <div class="doc-card">
-                    <div class="doc-icon">🔗</div>
-                    <h3>API Reference</h3>
-                    <p>Explore the full API documentation for provider development and integration.</p>
-                    <a href="https://github.com/RecklessEvadingDriver/providers#reference-types" target="_blank" class="doc-link">Read More →</a>
+    <!-- Details View -->
+    <div id="detailsView" class="view-container" style="display: none;">
+        <section class="details-section">
+            <div class="container">
+                <div id="detailsContent">
+                    <div class="loading">Loading...</div>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
+    </div>
 
-    <!-- About Section -->
-    <section id="about" class="about-section">
-        <div class="container">
-            <div class="about-content">
-                <h2 class="section-title">About Vega Providers</h2>
-                <p class="about-text">
-                    Vega Providers is an open-source collection of streaming content providers designed for the Vega app.
-                    Our mission is to provide a fast, reliable, and cross-platform solution for accessing streaming content
-                    from various sources around the world.
-                </p>
-                <p class="about-text">
-                    Each provider is carefully crafted to ensure optimal performance, with support for multiple regions
-                    and content types including movies, TV shows, and anime. The providers are built with TypeScript
-                    and optimized for minimal bundle size and maximum compatibility.
-                </p>
-                <div class="about-features">
-                    <div class="feature">
-                        <div class="feature-icon">⚡</div>
-                        <h3>Lightning Fast</h3>
-                        <p>Optimized code with minimal dependencies for blazing fast performance</p>
-                    </div>
-                    <div class="feature">
-                        <div class="feature-icon">🌍</div>
-                        <h3>Cross-Platform</h3>
-                        <p>Works seamlessly across all devices and platforms</p>
-                    </div>
-                    <div class="feature">
-                        <div class="feature-icon">🔒</div>
-                        <h3>Reliable</h3>
-                        <p>Regularly maintained and updated for maximum uptime</p>
-                    </div>
+    <!-- Player View -->
+    <div id="playerView" class="view-container" style="display: none;">
+        <section class="player-section">
+            <div class="container">
+                <div id="playerContainer">
+                    <div class="loading">Loading player...</div>
                 </div>
             </div>
-        </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-content">
-                <div class="footer-section">
-                    <h4>Vega Providers</h4>
-                    <p>Fast, reliable streaming providers for the Vega app.</p>
-                </div>
-                <div class="footer-section">
-                    <h4>Resources</h4>
-                    <ul>
-                        <li><a href="https://github.com/RecklessEvadingDriver/providers" target="_blank">GitHub</a></li>
-                        <li><a href="https://github.com/RecklessEvadingDriver/providers#readme" target="_blank">Documentation</a></li>
-                        <li><a href="https://github.com/RecklessEvadingDriver/providers/issues" target="_blank">Issues</a></li>
-                    </ul>
-                </div>
-                <div class="footer-section">
-                    <h4>Community</h4>
-                    <ul>
-                        <li><a href="https://github.com/RecklessEvadingDriver/providers/discussions" target="_blank">Discussions</a></li>
-                        <li><a href="https://github.com/RecklessEvadingDriver/providers/blob/main/README.md" target="_blank">Contributing</a></li>
-                    </ul>
-                </div>
-            </div>
-            <div class="footer-bottom">
-                <p>&copy; 2024 Vega Providers. Open Source Software.</p>
-            </div>
-        </div>
-    </footer>
-
-    <!-- Provider Modal -->
-    <div class="modal" id="providerModal">
-        <div class="modal-overlay" id="modalOverlay"></div>
-        <div class="modal-content">
-            <button class="modal-close" id="modalClose">&times;</button>
-            <div id="modalBody">
-                <!-- Content loaded dynamically -->
-            </div>
-        </div>
+        </section>
     </div>
 
     <script src="app.js"></script>
