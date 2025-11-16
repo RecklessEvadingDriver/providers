@@ -1,5 +1,9 @@
 # Vega App Provider Extensions
 
+> **🎬 NEW: Streaming Website Available!**  
+> Now you can browse and watch content directly in your browser using the new Vega Stream website.  
+> **[Quick Start Guide →](GETTING_STARTED.md)** | **[Full Documentation →](STREAMING_WEBSITE.md)**
+
 # Provider
 
 How providers are structured and how to create a new one.
